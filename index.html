@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>パスワード攻撃シミュレーション</title>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      margin-top: 80px;
+      background: #fafafa;
+    }
+
+    input {
+      font-size: 20px;
+      padding: 10px;
+      width: 400px;
+    }
+
+    #counter {
+      margin-top: 10px;
+      font-size: 16px;
+    }
+
+    #phase {
+      margin-top: 25px;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    #mainResult {
+      margin-top: 35px;
+      font-size: 42px;
+      font-weight: bold;
+      color: crimson;
+      min-height: 1.4em;
+    }
+
+    #detail {
+      margin-top: 20px;
+      font-size: 18px;
+      line-height: 1.7;
+    }
+
+    #note {
+      margin-top: 40px;
+      font-size: 12px;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+
+<h1>パスワード攻撃シミュレーション</h1>
+<p>※ パスワード入力後、Enterキーを押してください</p>
+
+<input type="password" id="pass" placeholder="パスワードを入力">
+<div id="counter">現在の文字数：0</div>
+
+<div id="phase"></div>
+<div id="mainResult"></div>
+<div id="detail"></div>
+
+<div id="note">
+  ※ 辞書攻撃／ルールベース攻撃／総当たり攻撃を<br>
+  教育目的で簡略化して再現しています
+</div>
+
+<script>
+const input = document.getElementById("pass");
+const counter = document.getElementById("counter");
+const phase = document.getElementById("phase");
+const mainResult = document.getElementById("mainResult");
+const detail = document.getElementById("detail");
+
+const triesPerSecond = 100000000000; // 1000億回/秒
+
+// --- 文字数表示 ---
+input.addEventListener("input", () => {
+  counter.textContent = `現在の文字数：${input.value.length}`;
+});
+
+// --- Enterで開始 ---
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter") simulate();
+});
+
+function simulate() {
+  const pw = input.value;
+  if (!pw) return;
+
+  phase.textContent = "";
+  detail.innerHTML = "";
+  mainResult.textContent = "解析中…";
+
+  // ===== 総当たり理論値 =====
+  let charset = 0;
+  if (/[a-z]/.test(pw)) charset += 26;
+  if (/[A-Z]/.test(pw)) charset += 26;
+  if (/[0-9]/.test(pw)) charset += 10;
+  if (/[^a-zA-Z0-9]/.test(pw)) charset += 32;
+
+  const bruteSeconds =
+    Math.pow(charset, pw.length) / triesPerSecond;
+
+  let finalSeconds = bruteSeconds;
+  let phaseName = "総当たり攻撃フェーズ";
+  let reason = "規則性が見えず、総当たりまで到達";
+
+  // ===== 人間パターン判定 =====
+  if (isHumanPattern(pw)) {
+    phaseName = "ルールベース攻撃フェーズ";
+    finalSeconds = 10;
+    reason = "単語・記号・数字を組み合わせた、典型的な人間が考えそうな構造";
+  }
+
+  // ===== 即死パターン =====
+  if (/^(.{1,3})\1+$/.test(pw)) {
+    phaseName = "辞書攻撃フェーズ";
+    finalSeconds = 0.1;
+    reason = "短いパターンの反復";
+  }
+  else if (/([a-zA-Z0-9])\1{2,}/.test(pw)) {
+    phaseName = "辞書攻撃フェーズ";
+    finalSeconds = 0.1;
+    reason = "同一文字の繰り返し";
+  }
+  else if (/(abc|bcd|cde|123|234|345|456|567|678|789)/i.test(pw)) {
+    phaseName = "辞書攻撃フェーズ";
+    finalSeconds = 0.1;
+    reason = "連番パターン";
+  }
+
+  // ===== スロット演出 =====
+  runSlot(finalSeconds, phaseName, reason, bruteSeconds, pw.length);
+}
+
+// --- 人間パターン判定 ---
+function isHumanPattern(str) {
+  const hasLetters = /[a-zA-Z]{3,}/.test(str);
+  const hasSymbol = /[^a-zA-Z0-9]/.test(str);
+  const tailNumber = /\d{2,}$/.test(str);
+  const vowelHeavy = isVowelHeavy(str);
+
+  if (hasLetters && hasSymbol && tailNumber) return true;
+  if (vowelHeavy && hasLetters) return true;
+
+  return false;
+}
+
+function isVowelHeavy(str) {
+  const vowels = str.match(/[aeiou]/gi);
+  if (!vowels) return false;
+  return vowels.length / str.length > 0.5;
+}
+
+// --- スロット演出本体 ---
+function runSlot(seconds, phaseName, reason, bruteSeconds, length) {
+  const start = Date.now();
+  const duration = Math.min(seconds, 10) * 1000;
+
+  const timer = setInterval(() => {
+    const elapsed = Date.now() - start;
+    const fake = Math.random() * 100;
+
+    mainResult.textContent =
+      `突破まで約 ${fake.toFixed(2)} 秒`;
+
+    if (elapsed >= duration) {
+      clearInterval(timer);
+
+      mainResult.textContent =
+        `突破まで約 ${format(seconds)}`;
+
+      phase.textContent = `突破フェーズ：${phaseName}`;
+
+      detail.innerHTML = `
+        <p>理論値（総当たり）：${format(bruteSeconds)}</p>
+        <p><strong>判定理由：</strong>${reason}</p>
+      `;
+    }
+  }, 120);
+}
+
+// --- 秒数整形 ---
+function format(sec) {
+  if (sec < 1) return sec.toFixed(3) + " 秒";
+  if (sec < 60) return sec.toFixed(2) + " 秒";
+  if (sec < 3600) return (sec / 60).toFixed(2) + " 分";
+  if (sec < 86400) return (sec / 3600).toFixed(2) + " 時間";
+  return (sec / 86400).toFixed(2) + " 日";
+}
+</script>
+
+</body>
+</html>
